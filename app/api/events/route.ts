@@ -43,6 +43,7 @@ export async function POST(req: Request) {
     if (err instanceof ZodError) {
       return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
     }
+    console.error("Failed to create event:", err);
     return NextResponse.json({ error: "Failed to create event" }, { status: 500 });
   }
 }
