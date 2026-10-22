@@ -3,13 +3,14 @@ import { prisma } from "@/backend/lib/db";
 import EventDashboardClient from "./EventDashboardClient";
 
 interface Props {
-  params: { id: string };
-  searchParams: { new?: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ new?: string }>;
 }
 
 export default async function EventDashboardPage({ params, searchParams }: Props) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       budgetItems:   { orderBy: { createdAt: "asc" } },
       timelineTasks: { orderBy: { dueDate: "asc" } },
@@ -20,7 +21,7 @@ export default async function EventDashboardPage({ params, searchParams }: Props
 
   if (!event) notFound();
 
-  const isNew = searchParams.new === "1";
+  const isNew = query.new === "1";
 
   return (
     <EventDashboardClient

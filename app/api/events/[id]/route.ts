@@ -3,12 +3,13 @@ import { prisma } from "@/backend/lib/db";
 import { UpdateEventSchema } from "@/backend/lib/schemas";
 import { ZodError } from "zod";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 // GET /api/events/[id]
 export async function GET(_req: Request, { params }: Params) {
+  const routeParams = await params;
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id: routeParams.id },
     include: {
       budgetItems: { orderBy: { createdAt: "asc" } },
       timelineTasks: { orderBy: { dueDate: "asc" } },
@@ -22,12 +23,13 @@ export async function GET(_req: Request, { params }: Params) {
 
 // PATCH /api/events/[id]
 export async function PATCH(req: Request, { params }: Params) {
+  const routeParams = await params;
   try {
     const body = await req.json();
     const data = UpdateEventSchema.parse(body);
 
     const updated = await prisma.event.update({
-      where: { id: params.id },
+      where: { id: routeParams.id },
       data: {
         ...data,
         date: data.date ? new Date(data.date) : undefined,
@@ -44,12 +46,14 @@ export async function PATCH(req: Request, { params }: Params) {
 
 // DELETE /api/events/[id]
 export async function DELETE(_req: Request, { params }: Params) {
+  const routeParams = await params;
   try {
-    await prisma.event.delete({ where: { id: params.id } });
+    await prisma.event.delete({ where: { id: routeParams.id } });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Failed to delete event" }, { status: 500 });
   }
 }
+
 
 

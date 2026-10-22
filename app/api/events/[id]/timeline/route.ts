@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/backend/lib/db";
 import { ZodError, z } from "zod";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 const CreateTaskSchema = z.object({
   title: z.string().min(1),
@@ -14,8 +14,9 @@ const CreateTaskSchema = z.object({
 
 // GET /api/events/[id]/timeline
 export async function GET(_req: Request, { params }: Params) {
+  const routeParams = await params;
   const tasks = await prisma.timelineTask.findMany({
-    where: { eventId: params.id },
+    where: { eventId: routeParams.id },
     orderBy: { dueDate: "asc" },
   });
   return NextResponse.json(tasks);
@@ -23,13 +24,14 @@ export async function GET(_req: Request, { params }: Params) {
 
 // POST /api/events/[id]/timeline — add a manual task
 export async function POST(req: Request, { params }: Params) {
+  const routeParams = await params;
   try {
     const body = await req.json();
     const data = CreateTaskSchema.parse(body);
 
     const task = await prisma.timelineTask.create({
       data: {
-        eventId: params.id,
+        eventId: routeParams.id,
         title: data.title,
         description: data.description,
         dueDate: new Date(data.dueDate),
@@ -46,5 +48,6 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
 }
+
 
 

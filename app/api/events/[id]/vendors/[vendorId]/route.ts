@@ -3,16 +3,17 @@ import { prisma } from "@/backend/lib/db";
 import { UpdateVendorSchema } from "@/backend/lib/schemas";
 import { ZodError } from "zod";
 
-type Params = { params: { id: string; vendorId: string } };
+type Params = { params: Promise<{ id: string; vendorId: string }> };
 
 // PATCH /api/events/[id]/vendors/[vendorId]
 export async function PATCH(req: Request, { params }: Params) {
+  const routeParams = await params;
   try {
     const body = await req.json();
     const data = UpdateVendorSchema.parse(body);
 
     const vendor = await prisma.vendorItem.update({
-      where: { id: params.vendorId, eventId: params.id },
+      where: { id: routeParams.vendorId, eventId: routeParams.id },
       data: { ...data, aiGenerated: false },
     });
     return NextResponse.json(vendor);
@@ -23,5 +24,6 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Failed to update vendor" }, { status: 500 });
   }
 }
+
 
 
