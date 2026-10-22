@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Event ───────────────────────────────────────────────────────────────────
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // wedding | birthday | community | other
+  date        DateTime
+  location    String
+  guestCount  Int
+  budget      Float    // total budget in INR (or chosen currency)
+  currency    String   @default("INR")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  budgetItems    BudgetItem[]
+  timelineTasks  TimelineTask[]
+  vendorItems    VendorItem[]
+  ideas          Idea[]
+}
+
+// ─── BudgetItem ───────────────────────────────────────────────────────────────
+
+model BudgetItem {
+  id          String  @id @default(cuid())
+  eventId     String
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  category    String  // venue | catering | decor | photography | attire | entertainment | misc
+  label       String  // display name for the category
+  percentage  Float   // AI-assigned % of total budget
+  estimated   Float   // computed from percentage * totalBudget
+  actual      Float   @default(0)
+  paid        Boolean @default(false)
+  aiGenerated Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── TimelineTask ─────────────────────────────────────────────────────────────
+
+model TimelineTask {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  phase       String   // e.g. "12 Weeks Before" | "Day Of"
+  title       String
+  description String?
+  dueDate     DateTime
+  status      String   @default("TODO") // TODO | DOING | DONE
+  aiGenerated Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── VendorItem ───────────────────────────────────────────────────────────────
+
+model VendorItem {
+  id          String  @id @default(cuid())
+  eventId     String
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  category    String  // venue | catering | photography | decor | music | other
+  name        String? // vendor name (filled by user)
+  contact     String? // phone / email
+  quote       Float?  // quoted price
+  status      String  @default("SHORTLIST") // SHORTLIST | BOOKED | PAID
+
+  // AI-generated guidance fields
+  questionsToAsk  String? // JSON array stored as string
+  documentsNeeded String? // JSON array stored as string
+  paymentTips     String? // plain text tips
+  aiGenerated     Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Idea ─────────────────────────────────────────────────────────────────────
+
+model Idea {
+  id          String  @id @default(cuid())
+  eventId     String
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  category    String  // theme | menu | decor | activity | gift
+  title       String
+  description String
+  saved       Boolean @default(false)
+  aiGenerated Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
