@@ -102,7 +102,7 @@ export default function EventDashboardClient({
     if (isNew && budgetItems.length === 0 && timelineTasks.length === 0) {
       generateAll();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   async function generateAll() {
     const steps = ["budget", "timeline", "vendors", "ideas"];

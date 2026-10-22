@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/backend/lib/db";
 import { Calendar, MapPin, Users, ArrowRight, Plus } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 function getProgress(tasks: { status: string }[]) {
   if (tasks.length === 0) return 0;
   const done = tasks.filter((t) => t.status === "DONE").length;
