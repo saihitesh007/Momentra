@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/backend/lib/db";
+import { handleRoute } from "@/backend/lib/api";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/events/[id]/budget
-export async function GET(_req: Request, { params }: Params) {
-  const routeParams = await params;
-  const items = await prisma.budgetItem.findMany({
-    where: { eventId: routeParams.id },
-    orderBy: { createdAt: "asc" },
+/** Lists budget rows for an event. */
+export async function GET(_req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id } = await params;
+    const items = await prisma.budgetItem.findMany({ where: { eventId: id }, orderBy: { createdAt: "asc" } });
+    return NextResponse.json(items);
   });
-  return NextResponse.json(items);
 }
-
-
-

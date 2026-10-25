@@ -17,8 +17,8 @@ const EVENT_TYPES = [
     title: "Birthday",
     desc: "Make it unforgettable with the perfect theme, venue, and activities.",
     color: "from-orange-50 to-amber-50 border-orange-100",
-    accent: "text-orange-600",
-    bg: "bg-orange-500",
+    accent: "text-orange-700",
+    bg: "bg-orange-700",
   },
   {
     type: "community",
@@ -60,7 +60,7 @@ export default function LandingPage() {
             <Link
               href="/new"
               id="nav-cta"
-              className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-full transition-colors"
+              className="bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-full transition-colors"
             >
               Plan an Event
             </Link>
@@ -68,6 +68,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
+      <main id="main">
       {/* ── Hero ────────────────────────────────────────── */}
       <section className="hero-gradient py-20 sm:py-28 px-4">
         <div className="max-w-4xl mx-auto text-center">
@@ -87,7 +88,7 @@ export default function LandingPage() {
             <Link
               href="/new"
               id="hero-cta"
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-8 py-4 rounded-2xl text-lg transition-all hover:scale-105 shadow-lg shadow-orange-200"
+              className="inline-flex items-center justify-center gap-2 bg-orange-700 hover:bg-orange-800 text-white font-semibold px-8 py-4 rounded-2xl text-lg transition-all hover:scale-105 shadow-lg shadow-orange-200"
             >
               Plan my event
               <ArrowRight size={20} />
@@ -180,17 +181,18 @@ export default function LandingPage() {
           <Link
             href="/new"
             id="bottom-cta"
-            className="inline-flex items-center gap-2 bg-white text-orange-600 font-bold px-8 py-4 rounded-2xl hover:bg-orange-50 transition-colors text-lg"
+            className="inline-flex items-center gap-2 bg-white text-orange-700 font-bold px-8 py-4 rounded-2xl hover:bg-orange-50 transition-colors text-lg"
           >
             <Heart size={20} />
             Plan my event — it&apos;s free
           </Link>
         </div>
       </section>
+      </main>
 
       {/* ── Footer ───────────────────────────────────────── */}
       <footer className="border-t border-gray-100 py-8 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-2">
             <span>🎉</span>
             <span className="font-medium text-gray-600">Momentra</span>

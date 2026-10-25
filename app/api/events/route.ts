@@ -1,30 +1,31 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/backend/lib/db";
 import { CreateEventSchema } from "@/backend/lib/schemas";
-import { ZodError } from "zod";
+import { handleRoute } from "@/backend/lib/api";
+import { rateLimitResponse } from "@/backend/lib/rateLimit";
 
-// GET /api/events — list all events with task progress
-export async function GET() {
-  try {
+/** Lists events and their task progress without caching user data. */
+export async function GET(): Promise<Response> {
+  return handleRoute(async () => {
     const events = await prisma.event.findMany({
       orderBy: { createdAt: "desc" },
-      include: {
+      select: {
+        id: true, name: true, type: true, date: true, location: true,
+        guestCount: true, budget: true, currency: true, createdAt: true,
         _count: { select: { timelineTasks: true } },
         timelineTasks: { select: { status: true } },
       },
     });
-    return NextResponse.json(events);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 });
-  }
+    return NextResponse.json(events, { headers: { "Cache-Control": "no-store" } });
+  });
 }
 
-// POST /api/events — create a new event
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const data = CreateEventSchema.parse(body);
-
+/** Creates a validated event. */
+export async function POST(req: Request): Promise<Response> {
+  const limited = rateLimitResponse(req, "create-event", 10);
+  if (limited) return limited;
+  return handleRoute(async () => {
+    const data = CreateEventSchema.parse(await req.json());
     const event = await prisma.event.create({
       data: {
         name: data.name,
@@ -37,16 +38,6 @@ export async function POST(req: Request) {
         notes: data.notes,
       },
     });
-
     return NextResponse.json(event, { status: 201 });
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    console.error("Failed to create event:", err);
-    return NextResponse.json({ error: "Failed to create event" }, { status: 500 });
-  }
+  });
 }
-
-
-

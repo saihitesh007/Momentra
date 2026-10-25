@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { BudgetItem } from "@prisma/client";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import dynamic from "next/dynamic";
+import { useState, useCallback, useMemo } from "react";
+import type { BudgetItem } from "@prisma/client";
 import { Check, AlertTriangle, RefreshCw, Edit2 } from "lucide-react";
 import { toast } from "@/frontend/components/Toaster";
 import { SkeletonBudget } from "@/frontend/components/Skeletons";
+import { budgetTotals } from "@/backend/lib/money";
+
+const BudgetChart = dynamic(() => import("./BudgetChart"), {
+  ssr: false,
+  loading: () => <div className="skeleton h-full w-full" aria-label="Loading budget chart" />,
+});
 
 const CATEGORY_COLORS: Record<string, string> = {
   venue:         "#f97316",
@@ -23,20 +29,22 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 
 interface Props {
   eventId: string;
-  initialItems: BudgetItem[];
+  initialItems: ClientBudgetItem[];
   totalBudget: number;
   currency: string;
 }
 
+type ClientBudgetItem = Omit<BudgetItem, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string };
+
 export default function BudgetTab({ eventId, initialItems, totalBudget, currency }: Props) {
-  const [items, setItems] = useState<BudgetItem[]>(initialItems);
+  const [items, setItems] = useState<ClientBudgetItem[]>(initialItems);
   const [generating, setGenerating] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editActual, setEditActual] = useState("");
   const sym = CURRENCY_SYMBOLS[currency] ?? currency;
 
-  const totalSpent = items.reduce((s, i) => s + i.actual, 0);
-  const overBudget = totalSpent > totalBudget;
+  const totals = useMemo(() => budgetTotals(items, totalBudget), [items, totalBudget]);
+  const { actualTotal: totalSpent, overBudget } = totals;
 
   async function generate() {
     setGenerating(true);
@@ -57,7 +65,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
     }
   }
 
-  const togglePaid = useCallback(async (item: BudgetItem) => {
+  const togglePaid = useCallback(async (item: ClientBudgetItem) => {
     // Optimistic
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, paid: !i.paid } : i))
@@ -79,7 +87,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
     }
   }, [eventId]);
 
-  async function saveActual(item: BudgetItem) {
+  async function saveActual(item: ClientBudgetItem) {
     const val = parseFloat(editActual);
     if (isNaN(val) || val < 0) { toast("Enter a valid amount", "error"); return; }
     // Optimistic
@@ -98,11 +106,11 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
     }
   }
 
-  const chartData = items.map((i) => ({
+  const chartData = useMemo(() => items.map((i) => ({
     name: i.label,
     value: i.estimated,
     color: CATEGORY_COLORS[i.category] ?? "#aaa",
-  }));
+  })), [items]);
 
   if (generating) return <SkeletonBudget />;
 
@@ -119,7 +127,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
         <button
           id="generate-budget"
           onClick={generate}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
         >
           <RefreshCw size={14} />
           {items.length === 0 ? "Generate Budget" : "Regenerate"}
@@ -131,7 +139,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
           <AlertTriangle size={18} className="flex-shrink-0" />
           <span>
-            <strong>Over budget!</strong> Actual spend ({sym}{totalSpent.toLocaleString("en-IN")}) exceeds total budget ({sym}{totalBudget.toLocaleString("en-IN")}).
+            <strong>Over budget by {sym}{(totalSpent - totalBudget).toLocaleString("en-IN")}.</strong> Actual spend is {sym}{totalSpent.toLocaleString("en-IN")} against a {sym}{totalBudget.toLocaleString("en-IN")} budget.
           </span>
         </div>
       )}
@@ -142,7 +150,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
           <p className="text-gray-500 mb-4">No budget plan yet.</p>
           <button
             onClick={generate}
-            className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-600 transition-colors"
+            className="bg-orange-700 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-800 transition-colors"
           >
             Generate AI Budget
           </button>
@@ -151,27 +159,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
         <>
           {/* Donut chart */}
           <div className="card p-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  dataKey="value"
-                  paddingAngle={2}
-                >
-                  {chartData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => [`${sym}${Number(value ?? 0).toLocaleString("en-IN")}`, ""]}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <BudgetChart data={chartData} currencySymbol={sym} />
           </div>
 
           {/* Table */}
@@ -181,6 +169,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
                     <th className="text-left px-4 py-3 text-gray-600 font-semibold">Category</th>
+                    <th className="text-right px-4 py-3 text-gray-600 font-semibold">Percent</th>
                     <th className="text-right px-4 py-3 text-gray-600 font-semibold">Estimated</th>
                     <th className="text-right px-4 py-3 text-gray-600 font-semibold">Actual</th>
                     <th className="text-center px-4 py-3 text-gray-600 font-semibold">Paid</th>
@@ -199,8 +188,8 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
                             />
                             <span className="font-medium text-gray-800">{item.label}</span>
                           </div>
-                          <div className="text-xs text-gray-400 ml-5">{item.percentage.toFixed(1)}%</div>
                         </td>
+                        <td className="px-4 py-3 text-right text-gray-700">{item.percentage.toFixed(1)}%</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-700">
                           {sym}{item.estimated.toLocaleString("en-IN")}
                         </td>
@@ -227,7 +216,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
                             <button
                               id={`edit-actual-${item.id}`}
                               onClick={() => { setEditId(item.id); setEditActual(String(item.actual)); }}
-                              className={`flex items-center gap-1 ml-auto hover:text-orange-600 transition-colors ${isOver ? "text-red-600 font-semibold" : "text-gray-700"}`}
+                              className={`flex items-center gap-1 ml-auto hover:text-orange-700 transition-colors ${isOver ? "text-red-600 font-semibold" : "text-gray-700"}`}
                             >
                               {sym}{item.actual.toLocaleString("en-IN")}
                               {isOver && <AlertTriangle size={12} />}
@@ -254,6 +243,7 @@ export default function BudgetTab({ eventId, initialItems, totalBudget, currency
                 <tfoot className="bg-gray-50">
                   <tr>
                     <td className="px-4 py-3 font-bold text-gray-900">Total</td>
+                    <td className="px-4 py-3 text-right text-gray-600">100%</td>
                     <td className="px-4 py-3 text-right font-bold text-gray-900">
                       {sym}{items.reduce((s, i) => s + i.estimated, 0).toLocaleString("en-IN")}
                     </td>

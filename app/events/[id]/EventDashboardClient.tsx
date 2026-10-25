@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Calendar, MapPin, Users, Wallet, Printer,
   LayoutDashboard, PieChart, Clock, Store, Lightbulb, MessageCircle,
@@ -87,38 +88,68 @@ export default function EventDashboardClient({
   ideas,
   isNew,
 }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [chatOpen, setChatOpen] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<Record<string, string>>({});
+  const generationStarted = useRef(false);
+  const generationAbortController = useRef<AbortController | null>(null);
 
   const meta = TYPE_META[event.type] ?? TYPE_META.other;
   const sym = CURRENCY_SYMBOLS[event.currency] ?? event.currency;
   const eventDate = new Date(event.date);
 
-  const doneTasks = timelineTasks.filter((t) => t.status === "DONE").length;
-  const progressPct = timelineTasks.length === 0 ? 0 : Math.round((doneTasks / timelineTasks.length) * 100);
+  const progressPct = useMemo(() => {
+    const doneTasks = timelineTasks.filter((task) => task.status === "DONE").length;
+    return timelineTasks.length === 0 ? 0 : Math.round((doneTasks / timelineTasks.length) * 100);
+  }, [timelineTasks]);
 
   // Auto-generate plan if brand new event and no data yet
-  useEffect(() => {
-    if (isNew && budgetItems.length === 0 && timelineTasks.length === 0) {
-      generateAll();
-    }
-  }, []);
-
-  async function generateAll() {
+  const generateAll = useCallback(async () => {
     const steps = ["budget", "timeline", "vendors", "ideas"];
-    for (const step of steps) {
+    generationAbortController.current?.abort();
+    const controller = new AbortController();
+    generationAbortController.current = controller;
+    setGenerationProgress(Object.fromEntries(steps.map((step) => [step, "pending"])));
+    await Promise.allSettled(steps.map(async (step) => {
       try {
-        await fetch(`/api/ai/${step}`, {
+        const response = await fetch(`/api/ai/${step}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ eventId: event.id }),
+          signal: controller.signal,
         });
+        if (!response.ok) throw new Error(`${step} generation failed`);
+        setGenerationProgress((current) => ({ ...current, [step]: "done" }));
       } catch {
-        // non-fatal, tabs handle empty states
+        if (!controller.signal.aborted) {
+          setGenerationProgress((current) => ({ ...current, [step]: "failed" }));
+        }
       }
+    }));
+    if (!controller.signal.aborted) router.refresh();
+  }, [event.id, router]);
+
+  useEffect(() => {
+    if (isNew && budgetItems.length === 0 && timelineTasks.length === 0 && !generationStarted.current) {
+      generationStarted.current = true;
+      void generateAll();
     }
-    // Reload to show fresh data
-    window.location.reload();
+    return () => generationAbortController.current?.abort();
+  }, [isNew, budgetItems.length, timelineTasks.length, generateAll]);
+
+  function handleTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const index = TABS.findIndex((tab) => tab.id === activeTab);
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % TABS.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + TABS.length) % TABS.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = TABS.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    const nextTab = TABS[nextIndex].id;
+    setActiveTab(nextTab);
+    document.getElementById(`tab-${nextTab}`)?.focus();
   }
 
   return (
@@ -129,7 +160,7 @@ export default function EventDashboardClient({
       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-orange-100 no-print">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/events" aria-label="Back to events" className="text-gray-400 hover:text-gray-700 transition-colors">
+            <Link href="/events" aria-label="Back to events" className="text-gray-600 hover:text-gray-700 transition-colors">
               <ArrowLeft size={20} />
             </Link>
             <div className="flex items-center gap-2">
@@ -155,7 +186,7 @@ export default function EventDashboardClient({
               id="open-chat"
               onClick={() => setChatOpen(true)}
               aria-label="Open chat assistant"
-              className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
             >
               <MessageCircle size={14} /> Ask Momentra
             </button>
@@ -195,16 +226,19 @@ export default function EventDashboardClient({
 
       {/* ── Tabs ──────────────────────────────────────────────── */}
       <div className="sticky top-16 z-30 bg-white border-b border-gray-100 no-print">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex gap-0 overflow-x-auto">
+        <div role="tablist" aria-label="Event plan sections" onKeyDown={handleTabKeyDown} className="max-w-5xl mx-auto px-4 sm:px-6 flex gap-0 overflow-x-auto">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               id={`tab-${id}`}
+              role="tab"
+              aria-selected={activeTab === id}
+              aria-controls="event-tabpanel"
+              tabIndex={activeTab === id ? 0 : -1}
               onClick={() => setActiveTab(id)}
-              aria-current={activeTab === id ? "true" : undefined}
               className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
                 activeTab === id
-                  ? "border-orange-500 text-orange-600"
+                  ? "border-orange-500 text-orange-700"
                   : "border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-200"
               }`}
             >
@@ -216,7 +250,14 @@ export default function EventDashboardClient({
       </div>
 
       {/* ── Tab content ───────────────────────────────────────── */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+      <main id="main" className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <h1 className="sr-only">{event.name} event plan</h1>
+        {Object.keys(generationProgress).length > 0 && (
+          <p className="card mb-5 p-3 text-sm text-gray-700" aria-live="polite">
+            Creating your plan: {Object.entries(generationProgress).map(([step, status]) => `${step} ${status === "done" ? "✓" : status === "failed" ? "failed" : "…"}`).join(" · ")}
+          </p>
+        )}
+        <div id="event-tabpanel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0}>
         {activeTab === "overview" && (
           <OverviewTab
             event={event}
@@ -232,8 +273,7 @@ export default function EventDashboardClient({
         {activeTab === "budget" && (
           <BudgetTab
             eventId={event.id}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            initialItems={budgetItems as any}
+            initialItems={budgetItems}
             totalBudget={event.budget}
             currency={event.currency}
           />
@@ -241,26 +281,24 @@ export default function EventDashboardClient({
         {activeTab === "timeline" && (
           <TimelineTab
             eventId={event.id}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            initialTasks={timelineTasks as any}
+            initialTasks={timelineTasks}
             eventDate={event.date}
           />
         )}
         {activeTab === "vendors" && (
           <VendorsTab
             eventId={event.id}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            initialVendors={vendorItems as any}
+            initialVendors={vendorItems}
             currency={event.currency}
           />
         )}
         {activeTab === "ideas" && (
           <IdeasTab
             eventId={event.id}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            initialIdeas={ideas as any}
+            initialIdeas={ideas}
           />
         )}
+        </div>
       </main>
 
       {/* ── Chat panel ────────────────────────────────────────── */}
@@ -300,7 +338,7 @@ function OverviewTab({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: "Tasks done", value: `${progressPct}%`, sub: `${timelineTasks.filter((t) => t.status === "DONE").length}/${timelineTasks.length}`, tab: "timeline" as TabId, color: "text-green-600" },
-          { label: "Budget spent", value: `${sym}${totalSpent.toLocaleString("en-IN")}`, sub: `of ${sym}${event.budget.toLocaleString("en-IN")}`, tab: "budget" as TabId, color: "text-orange-600" },
+          { label: "Budget spent", value: `${sym}${totalSpent.toLocaleString("en-IN")}`, sub: `of ${sym}${event.budget.toLocaleString("en-IN")}`, tab: "budget" as TabId, color: "text-orange-700" },
           { label: "Vendors booked", value: String(bookedVendors), sub: `of ${vendorItems.length}`, tab: "vendors" as TabId, color: "text-blue-600" },
           { label: "Ideas saved", value: String(savedIdeas), sub: `of ${ideas.length}`, tab: "ideas" as TabId, color: "text-purple-600" },
         ].map((s) => (
@@ -311,7 +349,7 @@ function OverviewTab({
           >
             <p className="text-xs text-gray-500 mb-1">{s.label}</p>
             <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{s.sub}</p>
+            <p className="text-xs text-gray-600 mt-0.5">{s.sub}</p>
           </button>
         ))}
       </div>
@@ -338,10 +376,10 @@ function OverviewTab({
           </p>
         )}
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-gray-400">Type</span><p className="font-medium capitalize">{event.type}</p></div>
-          <div><span className="text-gray-400">Date</span><p className="font-medium">{new Date(event.date).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p></div>
-          <div><span className="text-gray-400">Location</span><p className="font-medium">{event.location}</p></div>
-          <div><span className="text-gray-400">Guests</span><p className="font-medium">{event.guestCount.toLocaleString()}</p></div>
+          <div><span className="text-gray-600">Type</span><p className="font-medium capitalize">{event.type}</p></div>
+          <div><span className="text-gray-600">Date</span><p className="font-medium">{new Date(event.date).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p></div>
+          <div><span className="text-gray-600">Location</span><p className="font-medium">{event.location}</p></div>
+          <div><span className="text-gray-600">Guests</span><p className="font-medium">{event.guestCount.toLocaleString()}</p></div>
         </div>
       </div>
 
@@ -350,7 +388,7 @@ function OverviewTab({
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-gray-900">Upcoming Tasks</h2>
-            <button onClick={() => onTabChange("timeline")} className="text-xs text-orange-500 hover:text-orange-700">
+            <button onClick={() => onTabChange("timeline")} className="text-xs text-orange-700 hover:text-orange-700">
               View all →
             </button>
           </div>

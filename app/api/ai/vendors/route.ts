@@ -1,49 +1,36 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/lib/db";
 import { callGemini } from "@/backend/lib/gemini";
 import { buildVendorPrompt } from "@/backend/lib/prompts";
 import { GeminiVendorSchema } from "@/backend/lib/schemas";
+import { handleRoute } from "@/backend/lib/api";
+import { rateLimitResponse } from "@/backend/lib/rateLimit";
 
-// POST /api/ai/vendors
-export async function POST(req: Request) {
-  try {
-    const { eventId } = await req.json();
-    if (!eventId) {
-      return NextResponse.json({ error: "eventId is required" }, { status: 400 });
-    }
+const EventIdSchema = z.object({ eventId: z.string().min(1).max(64) }).strict();
 
+/** Generates vendor checklists and atomically replaces only AI-generated rows. */
+export async function POST(req: Request): Promise<Response> {
+  const limited = rateLimitResponse(req, "ai-vendors");
+  if (limited) return limited;
+  return handleRoute(async () => {
+    const { eventId } = EventIdSchema.parse(await req.json());
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
-
-    const prompt = buildVendorPrompt(event);
-    const result = await callGemini(prompt, GeminiVendorSchema);
-
-    // Delete existing AI-generated vendor rows, keep user-edited ones
-    await prisma.vendorItem.deleteMany({ where: { eventId, aiGenerated: true } });
-
-    await prisma.vendorItem.createMany({
-      data: result.vendors.map((v) => ({
+    const result = await callGemini(buildVendorPrompt(event), GeminiVendorSchema);
+    const vendors = await prisma.$transaction(async (tx) => {
+      await tx.vendorItem.deleteMany({ where: { eventId, aiGenerated: true } });
+      await tx.vendorItem.createMany({ data: result.vendors.map((vendor) => ({
         eventId,
-        category: v.category,
-        questionsToAsk: JSON.stringify(v.questionsToAsk),
-        documentsNeeded: JSON.stringify(v.documentsNeeded),
-        paymentTips: v.paymentTips,
+        category: vendor.category,
+        questionsToAsk: JSON.stringify(vendor.questionsToAsk),
+        documentsNeeded: JSON.stringify(vendor.documentsNeeded),
+        paymentTips: vendor.paymentTips,
         status: "SHORTLIST",
         aiGenerated: true,
-      })),
+      })) });
+      return tx.vendorItem.findMany({ where: { eventId }, orderBy: { createdAt: "asc" } });
     });
-
-    const vendors = await prisma.vendorItem.findMany({
-      where: { eventId },
-      orderBy: { createdAt: "asc" },
-    });
-
     return NextResponse.json({ vendors, count: vendors.length });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    if (msg.includes("429")) return NextResponse.json({ error: "Rate limited" }, { status: 429 });
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  });
 }
-
-

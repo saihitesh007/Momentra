@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
+
+const geist = localFont({ src: "./fonts/GeistVF.woff", variable: "--font-geist", weight: "100 900" });
 
 export const metadata: Metadata = {
   title: "Momentra — AI Event Planner",
@@ -13,13 +16,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
-      <body className="antialiased">{children}</body>
+    <html lang="en" className={geist.variable} data-scroll-behavior="smooth">
+      <body className="antialiased">
+        <a className="skip-link" href="#main">Skip to main content</a>
+        {children}
+      </body>
     </html>
   );
 }

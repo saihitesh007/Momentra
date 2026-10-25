@@ -1,29 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/backend/lib/db";
 import { UpdateVendorSchema } from "@/backend/lib/schemas";
-import { ZodError } from "zod";
+import { handleRoute } from "@/backend/lib/api";
 
 type Params = { params: Promise<{ id: string; vendorId: string }> };
 
-// PATCH /api/events/[id]/vendors/[vendorId]
-export async function PATCH(req: Request, { params }: Params) {
-  const routeParams = await params;
-  try {
-    const body = await req.json();
-    const data = UpdateVendorSchema.parse(body);
-
-    const vendor = await prisma.vendorItem.update({
-      where: { id: routeParams.vendorId, eventId: routeParams.id },
-      data: { ...data, aiGenerated: false },
-    });
+/** Updates a vendor row scoped to its parent event. */
+export async function PATCH(req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id, vendorId } = await params;
+    const data = UpdateVendorSchema.parse(await req.json());
+    const vendor = await prisma.vendorItem.update({ where: { id: vendorId, eventId: id }, data: { ...data, aiGenerated: false } });
     return NextResponse.json(vendor);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    return NextResponse.json({ error: "Failed to update vendor" }, { status: 500 });
-  }
+  });
 }
-
-
-

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Idea } from "@prisma/client";
+import { useState, useMemo } from "react";
+import type { Idea } from "@prisma/client";
 import { Heart, RefreshCw } from "lucide-react";
 import { toast } from "@/frontend/components/Toaster";
 import { SkeletonCard } from "@/frontend/components/Skeletons";
@@ -18,11 +18,13 @@ type FilterKind = "all" | "theme" | "menu" | "decor" | "activity" | "gift";
 
 interface Props {
   eventId: string;
-  initialIdeas: Idea[];
+  initialIdeas: ClientIdea[];
 }
 
+type ClientIdea = Omit<Idea, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string };
+
 export default function IdeasTab({ eventId, initialIdeas }: Props) {
-  const [ideas, setIdeas] = useState<Idea[]>(initialIdeas);
+  const [ideas, setIdeas] = useState<ClientIdea[]>(initialIdeas);
   const [generating, setGenerating] = useState(false);
   const [filter, setFilter] = useState<FilterKind>("all");
 
@@ -45,7 +47,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
     }
   }
 
-  async function toggleSaved(idea: Idea) {
+  async function toggleSaved(idea: ClientIdea) {
     // Optimistic
     setIdeas((prev) => prev.map((i) => (i.id === idea.id ? { ...i, saved: !i.saved } : i)));
     try {
@@ -62,7 +64,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
     }
   }
 
-  const displayed = filter === "all" ? ideas : ideas.filter((i) => i.category === filter);
+  const displayed = useMemo(() => filter === "all" ? ideas : ideas.filter((idea) => idea.category === filter), [filter, ideas]);
 
   if (generating) return <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{Array.from({length:8}).map((_,i) => <SkeletonCard key={i} />)}</div>;
 
@@ -74,7 +76,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
         <button
           id="generate-ideas"
           onClick={generate}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
         >
           <RefreshCw size={14} />
           {ideas.length === 0 ? "Generate Ideas" : "Regenerate"}
@@ -91,7 +93,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
               onClick={() => setFilter(f)}
               className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
                 filter === f
-                  ? "bg-orange-500 text-white"
+                  ? "bg-orange-700 text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
@@ -105,7 +107,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
         <div className="card p-10 text-center">
           <div className="text-4xl mb-3">✨</div>
           <p className="text-gray-500 mb-4">No ideas yet.</p>
-          <button onClick={generate} className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-600">
+          <button onClick={generate} className="bg-orange-700 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-800">
             Generate AI Ideas
           </button>
         </div>
@@ -146,7 +148,7 @@ export default function IdeasTab({ eventId, initialIdeas }: Props) {
       )}
 
       {ideas.length > 0 && ideas.some((i) => i.saved) && (
-        <p className="text-xs text-gray-400 text-center">
+        <p className="text-xs text-gray-600 text-center">
           {ideas.filter((i) => i.saved).length} idea{ideas.filter((i) => i.saved).length > 1 ? "s" : ""} saved ❤️
         </p>
       )}

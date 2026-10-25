@@ -1,34 +1,21 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/lib/db";
-import { z, ZodError } from "zod";
+import { handleRoute } from "@/backend/lib/api";
 
 type Params = { params: Promise<{ id: string; ideaId: string }> };
-
 const UpdateIdeaSchema = z.object({
   saved: z.boolean().optional(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-});
+  title: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().min(1).max(1000).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
-// PATCH /api/events/[id]/ideas/[ideaId]
-export async function PATCH(req: Request, { params }: Params) {
-  const routeParams = await params;
-  try {
-    const body = await req.json();
-    const data = UpdateIdeaSchema.parse(body);
-
-    const idea = await prisma.idea.update({
-      where: { id: routeParams.ideaId, eventId: routeParams.id },
-      data,
-    });
+/** Updates an idea scoped to its parent event. */
+export async function PATCH(req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id, ideaId } = await params;
+    const data = UpdateIdeaSchema.parse(await req.json());
+    const idea = await prisma.idea.update({ where: { id: ideaId, eventId: id }, data });
     return NextResponse.json(idea);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    return NextResponse.json({ error: "Failed to update idea" }, { status: 500 });
-  }
+  });
 }
-
-
-

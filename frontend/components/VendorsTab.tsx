@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { VendorItem } from "@prisma/client";
+import type { VendorItem } from "@prisma/client";
 import { RefreshCw, Check } from "lucide-react";
 import { toast } from "@/frontend/components/Toaster";
 import { SkeletonCard } from "@/frontend/components/Skeletons";
@@ -26,9 +26,11 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 
 interface Props {
   eventId: string;
-  initialVendors: VendorItem[];
+  initialVendors: ClientVendorItem[];
   currency: string;
 }
+
+type ClientVendorItem = Omit<VendorItem, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string };
 
 function parseJsonArray(s: string | null | undefined): string[] {
   if (!s) return [];
@@ -36,9 +38,9 @@ function parseJsonArray(s: string | null | undefined): string[] {
 }
 
 export default function VendorsTab({ eventId, initialVendors, currency }: Props) {
-  const [vendors, setVendors] = useState<VendorItem[]>(initialVendors);
+  const [vendors, setVendors] = useState<ClientVendorItem[]>(initialVendors);
   const [generating, setGenerating] = useState(false);
-  const [editing, setEditing] = useState<Record<string, Partial<VendorItem>>>({});
+  const [editing, setEditing] = useState<Record<string, Partial<ClientVendorItem>>>({});
   const sym = CURRENCY_SYMBOLS[currency] ?? currency;
 
   async function generate() {
@@ -64,7 +66,7 @@ export default function VendorsTab({ eventId, initialVendors, currency }: Props)
     setEditing((e) => ({ ...e, [vendorId]: { ...e[vendorId], [field]: value } }));
   }
 
-  async function saveVendor(vendor: VendorItem) {
+  async function saveVendor(vendor: ClientVendorItem) {
     const changes = editing[vendor.id];
     if (!changes) return;
     // Optimistic
@@ -98,7 +100,7 @@ export default function VendorsTab({ eventId, initialVendors, currency }: Props)
         <button
           id="generate-vendors"
           onClick={generate}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
         >
           <RefreshCw size={14} />
           {vendors.length === 0 ? "Generate Vendors" : "Regenerate"}
@@ -109,7 +111,7 @@ export default function VendorsTab({ eventId, initialVendors, currency }: Props)
         <div className="card p-10 text-center">
           <div className="text-4xl mb-3">🤝</div>
           <p className="text-gray-500 mb-4">No vendor guide yet.</p>
-          <button onClick={generate} className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-600">
+          <button onClick={generate} className="bg-orange-700 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-800">
             Generate Vendor Guide
           </button>
         </div>

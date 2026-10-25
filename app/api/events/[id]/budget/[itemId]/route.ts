@@ -1,29 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/backend/lib/db";
 import { UpdateBudgetItemSchema } from "@/backend/lib/schemas";
-import { ZodError } from "zod";
+import { handleRoute } from "@/backend/lib/api";
 
 type Params = { params: Promise<{ id: string; itemId: string }> };
 
-// PATCH /api/events/[id]/budget/[itemId]
-export async function PATCH(req: Request, { params }: Params) {
-  const routeParams = await params;
-  try {
-    const body = await req.json();
-    const data = UpdateBudgetItemSchema.parse(body);
-
+/** Updates a budget row scoped to its parent event. */
+export async function PATCH(req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id, itemId } = await params;
+    const data = UpdateBudgetItemSchema.parse(await req.json());
     const item = await prisma.budgetItem.update({
-      where: { id: routeParams.itemId, eventId: routeParams.id },
-      data: { ...data, aiGenerated: false }, // mark as user-edited
+      where: { id: itemId, eventId: id },
+      data: { ...data, aiGenerated: false },
     });
     return NextResponse.json(item);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    return NextResponse.json({ error: "Failed to update budget item" }, { status: 500 });
-  }
+  });
 }
-
-
-

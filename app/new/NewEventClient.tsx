@@ -17,6 +17,7 @@ const EVENT_TYPES: { value: EventType; label: string; emoji: string; desc: strin
 ];
 
 const STEPS = ["Event Type", "Basics", "Budget", "Preferences"];
+const QUICK_PREFERENCES = ["Vegetarian", "Vegan", "Jain-friendly", "Traditional", "Modern", "Kid-friendly", "Budget-conscious", "Outdoor"];
 
 interface FormData {
   type: EventType;
@@ -36,6 +37,7 @@ export default function NewEventClient() {
 
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [quickPreferences, setQuickPreferences] = useState<string[]>([]);
   const [form, setForm] = useState<FormData>({
     type: preselectedType,
     name: "",
@@ -70,7 +72,7 @@ export default function NewEventClient() {
           guestCount: Number(form.guestCount),
           budget: Number(form.budget),
           currency: form.currency,
-          notes: form.notes || undefined,
+          notes: [form.notes.trim(), ...quickPreferences].filter(Boolean).join(" | ").slice(0, 1000) || undefined,
         }),
       });
 
@@ -103,8 +105,9 @@ export default function NewEventClient() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-start justify-center px-4 py-10">
+      <main id="main" className="flex-1 flex items-start justify-center px-4 py-10">
         <div className="w-full max-w-xl">
+          <h1 className="sr-only">Create your event plan</h1>
           {/* Step indicator */}
           <div className="flex items-center gap-1 mb-8">
             {STEPS.map((s, i) => (
@@ -116,15 +119,15 @@ export default function NewEventClient() {
                     i < step
                       ? "bg-green-500 text-white cursor-pointer"
                       : i === step
-                      ? "bg-orange-500 text-white ring-4 ring-orange-100"
-                      : "bg-gray-100 text-gray-400 cursor-default"
+                      ? "bg-orange-700 text-white ring-4 ring-orange-100"
+                      : "bg-gray-100 text-gray-600 cursor-default"
                   }`}
                 >
                   {i < step ? <Check size={14} /> : i + 1}
                 </button>
                 <span
                   className={`text-xs hidden sm:block ${
-                    i === step ? "text-orange-600 font-medium" : "text-gray-400"
+                    i === step ? "text-orange-700 font-medium" : "text-gray-600"
                   }`}
                 >
                   {s}
@@ -293,6 +296,28 @@ export default function NewEventClient() {
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
                   />
                 </div>
+                <fieldset className="mt-4">
+                  <legend className="block text-sm font-medium text-gray-700 mb-2">Quick style, dietary &amp; vibe preferences</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {QUICK_PREFERENCES.map((preference) => {
+                      const selected = quickPreferences.includes(preference);
+                      return (
+                        <button
+                          key={preference}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setQuickPreferences((current) => selected
+                            ? current.filter((item) => item !== preference)
+                            : [...current, preference])}
+                          className={`min-h-11 rounded-full border px-3 py-2 text-sm transition-colors ${selected ? "border-orange-700 bg-orange-50 text-orange-800" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {preference}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-600">Selected preferences are included with your notes to personalize AI suggestions.</p>
+                </fieldset>
                 <div className="mt-4 p-4 bg-orange-50 rounded-xl text-sm border border-orange-100">
                   <strong className="text-orange-900">What happens next?</strong>
                   <p className="mt-1 text-orange-700">
@@ -319,7 +344,7 @@ export default function NewEventClient() {
                   id="next-step"
                   onClick={() => setStep((s) => s + 1)}
                   disabled={!canProceed()}
-                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition-all"
+                  className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 disabled:opacity-40 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition-all"
                 >
                   Next <ArrowRight size={16} />
                 </button>
@@ -328,7 +353,7 @@ export default function NewEventClient() {
                   id="create-event"
                   onClick={submit}
                   disabled={loading}
-                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all"
+                  className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 disabled:opacity-60 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all"
                 >
                   {loading ? (
                     <>
@@ -342,7 +367,7 @@ export default function NewEventClient() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

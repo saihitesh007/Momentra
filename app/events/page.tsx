@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/backend/lib/db";
 import { Calendar, MapPin, Users, ArrowRight, Plus } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "My Events | Momentra" };
 
 export const dynamic = "force-dynamic";
 
@@ -35,14 +38,14 @@ export default async function EventsPage() {
           <Link
             href="/new"
             id="new-event-btn"
-            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-full transition-colors"
+            className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-full transition-colors"
           >
             <Plus size={16} /> New Event
           </Link>
         </div>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+      <main id="main" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold text-gray-900">My Events</h1>
           <p className="text-gray-500 mt-1">
@@ -60,7 +63,7 @@ export default async function EventsPage() {
             <Link
               href="/new"
               id="empty-state-cta"
-              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
             >
               <Plus size={18} /> Plan my first event
             </Link>
@@ -85,11 +88,11 @@ export default async function EventsPage() {
                       {meta.emoji} {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
                     </span>
                     {isPast && (
-                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Past</span>
+                      <span className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">Past</span>
                     )}
                   </div>
 
-                  <h2 className="font-bold text-gray-900 text-lg leading-tight mb-3 group-hover:text-orange-600 transition-colors">
+                  <h2 className="font-bold text-gray-900 text-lg leading-tight mb-3 group-hover:text-orange-700 transition-colors">
                     {event.name}
                   </h2>
 
@@ -131,7 +134,7 @@ export default async function EventsPage() {
                     </span>
                     <ArrowRight
                       size={16}
-                      className="text-gray-400 group-hover:text-orange-500 group-hover:translate-x-0.5 transition-all"
+                      className="text-gray-600 group-hover:text-orange-700 group-hover:translate-x-0.5 transition-all"
                     />
                   </div>
                 </Link>

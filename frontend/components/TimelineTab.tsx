@@ -1,25 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { TimelineTask } from "@prisma/client";
+import { useState, useMemo } from "react";
+import type { TimelineTask } from "@prisma/client";
+import { isOverdue as isTaskOverdue } from "@/backend/lib/dates";
 import { Trash2, Plus, RefreshCw, AlertTriangle, Check, Clock, Circle } from "lucide-react";
 import { toast } from "@/frontend/components/Toaster";
 import { SkeletonTimeline } from "@/frontend/components/Skeletons";
 
 const STATUS_META = {
-  TODO:  { label: "To Do",       icon: Circle,    color: "text-gray-400",  bg: "bg-gray-100  text-gray-600"  },
+  TODO:  { label: "To Do",       icon: Circle,    color: "text-gray-600",  bg: "bg-gray-100  text-gray-600"  },
   DOING: { label: "In Progress", icon: Clock,     color: "text-blue-500",  bg: "bg-blue-100  text-blue-700"  },
   DONE:  { label: "Done",        icon: Check,     color: "text-green-500", bg: "bg-green-100 text-green-700" },
 };
 
 interface Props {
   eventId: string;
-  initialTasks: TimelineTask[];
+  initialTasks: ClientTimelineTask[];
   eventDate: string;
 }
 
-function groupByPhase(tasks: TimelineTask[]) {
-  const map = new Map<string, TimelineTask[]>();
+type ClientTimelineTask = Omit<TimelineTask, "dueDate" | "createdAt" | "updatedAt"> & {
+  dueDate: string; createdAt: string; updatedAt: string;
+};
+
+function groupByPhase(tasks: ClientTimelineTask[]) {
+  const map = new Map<string, ClientTimelineTask[]>();
   for (const t of tasks) {
     const arr = map.get(t.phase) ?? [];
     arr.push(t);
@@ -29,13 +34,12 @@ function groupByPhase(tasks: TimelineTask[]) {
 }
 
 export default function TimelineTab({ eventId, initialTasks, eventDate }: Props) {
-  const [tasks, setTasks] = useState<TimelineTask[]>(initialTasks);
+  const [tasks, setTasks] = useState<ClientTimelineTask[]>(initialTasks);
   const [generating, setGenerating] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", phase: "Custom", dueDate: "" });
 
-  const today = new Date();
-  const donePct = tasks.length === 0 ? 0 : Math.round((tasks.filter((t) => t.status === "DONE").length / tasks.length) * 100);
+  const donePct = useMemo(() => tasks.length === 0 ? 0 : Math.round((tasks.filter((task) => task.status === "DONE").length / tasks.length) * 100), [tasks]);
 
   async function generate() {
     setGenerating(true);
@@ -56,7 +60,7 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
     }
   }
 
-  async function updateStatus(task: TimelineTask, status: "TODO" | "DOING" | "DONE") {
+  async function updateStatus(task: ClientTimelineTask, status: "TODO" | "DOING" | "DONE") {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
     try {
       const res = await fetch(`/api/events/${eventId}/timeline/${task.id}`, {
@@ -137,7 +141,7 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
           <button
             id="generate-timeline"
             onClick={generate}
-            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+            className="flex items-center gap-2 bg-orange-700 hover:bg-orange-800 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
           >
             <RefreshCw size={14} />
             {tasks.length === 0 ? "Generate" : "Regenerate"}
@@ -173,7 +177,7 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
             />
           </div>
           <div className="flex gap-2">
-            <button onClick={addTask} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600">
+            <button onClick={addTask} className="bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-800">
               Add
             </button>
             <button onClick={() => setAdding(false)} className="text-gray-500 px-4 py-2 text-sm hover:text-gray-700">
@@ -187,7 +191,7 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
         <div className="card p-10 text-center">
           <div className="text-4xl mb-3">📅</div>
           <p className="text-gray-500 mb-4">No timeline yet.</p>
-          <button onClick={generate} className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-600 transition-colors">
+          <button onClick={generate} className="bg-orange-700 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-orange-800 transition-colors">
             Generate AI Timeline
           </button>
         </div>
@@ -195,11 +199,11 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
         <div className="space-y-8">
           {Array.from(grouped.entries()).map(([phase, phaseTasks]) => (
             <div key={phase}>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 px-1">{phase}</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-3 px-1">{phase}</h3>
               <div className="space-y-2">
                 {phaseTasks.map((task) => {
                   const dueDate = new Date(task.dueDate);
-                  const isOverdue = dueDate < today && task.status !== "DONE";
+                  const overdue = isTaskOverdue(dueDate, task.status);
                   const meta = STATUS_META[task.status as keyof typeof STATUS_META];
                   const Icon = meta.icon;
 
@@ -207,17 +211,17 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
                     <div
                       key={task.id}
                       className={`card p-4 flex items-start gap-3 transition-all ${
-                        isOverdue ? "border-red-200 bg-red-50/30" : ""
+                        overdue ? "border-red-200 bg-red-50/30" : ""
                       }`}
                     >
                       <Icon size={18} className={`mt-0.5 flex-shrink-0 ${meta.color}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2 flex-wrap">
-                          <span className={`font-medium text-sm ${task.status === "DONE" ? "line-through text-gray-400" : "text-gray-900"}`}>
+                          <span className={`font-medium text-sm ${task.status === "DONE" ? "line-through text-gray-600" : "text-gray-900"}`}>
                             {task.title}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {isOverdue && (
+                            {overdue && (
                               <span className="flex items-center gap-1 text-xs text-red-600">
                                 <AlertTriangle size={11} /> Overdue
                               </span>
@@ -246,7 +250,7 @@ export default function TimelineTab({ eventId, initialTasks, eventDate }: Props)
                         {task.description && (
                           <p className="text-xs text-gray-500 mt-0.5">{task.description}</p>
                         )}
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-gray-600 mt-1">
                           Due: {dueDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </p>
                       </div>

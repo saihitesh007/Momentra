@@ -1,60 +1,88 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
+import { getGeminiEnv } from "./env";
 
-// ─── Client (server-side only) ────────────────────────────────────────────────
+export type GeminiErrorKind = "rate_limit" | "timeout" | "upstream" | "invalid_output" | "configuration";
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY is not set in environment variables.");
+/** Safe typed error used by API handlers without exposing provider details. */
+export class GeminiError extends Error {
+  constructor(public readonly kind: GeminiErrorKind, message: string, public readonly status?: number) {
+    super(message);
+    this.name = "GeminiError";
+  }
 }
 
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const MODEL = "gemini-2.5-flash";
+function upstreamStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const candidate = error as { status?: unknown; code?: unknown };
+  const status = typeof candidate.status === "number" ? candidate.status : Number(candidate.code);
+  return Number.isFinite(status) && status >= 400 && status <= 599 ? status : undefined;
+}
 
-// ─── Core call helper ─────────────────────────────────────────────────────────
+/** Calls Gemini with bounded JSON output, validating data and retrying only invalid output once. */
+export async function callGemini<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
+  let env: ReturnType<typeof getGeminiEnv>;
+  try {
+    env = getGeminiEnv();
+  } catch {
+    throw new GeminiError("configuration", "Gemini is not configured.");
+  }
 
-/**
- * Calls Gemini with a prompt and returns strict JSON, validated by the
- * provided Zod schema. Retries once on parse/validation failure.
- */
-export async function callGemini<T>(
-  prompt: string,
-  schema: z.ZodType<T>
-): Promise<T> {
-  async function attempt(): Promise<T> {
-    const response = await genai.models.generateContent({
-      model: MODEL,
+  const genai = new GoogleGenAI({ apiKey: env.apiKey });
+  let responseJsonSchema: unknown;
+  try {
+    responseJsonSchema = z.toJSONSchema(schema, { target: "draft-7" });
+  } catch {
+    responseJsonSchema = undefined;
+  }
+
+  const request = async (): Promise<T> => {
+    const call = genai.models.generateContent({
+      model: env.model,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        temperature: 0.7,
+        ...(responseJsonSchema ? { responseJsonSchema } : {}),
+        maxOutputTokens: 4096,
+        thinkingConfig: { thinkingBudget: 0 },
+        temperature: 0.5,
       },
     });
-
-    const text = response.text ?? "";
-
-    let parsed: unknown;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 200)}`);
+      const response = await Promise.race([
+        call,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new GeminiError("timeout", "Gemini request timed out.")), 20_000);
+        }),
+      ]);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(response.text ?? "");
+        return schema.parse(parsed);
+      } catch {
+        throw new GeminiError("invalid_output", "Gemini returned invalid structured output.");
+      }
+    } catch (error) {
+      if (error instanceof GeminiError) throw error;
+      const status = upstreamStatus(error);
+      throw new GeminiError(status === 429 ? "rate_limit" : "upstream", "Gemini request failed.", status);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
-
-    return schema.parse(parsed);
-  }
+  };
 
   try {
-    return await attempt();
-  } catch {
-    // One retry on any parse / validation failure
+    return await request();
+  } catch (error) {
+    if (!(error instanceof GeminiError) || error.kind !== "invalid_output") throw error;
     try {
-      return await attempt();
-    } catch (secondError) {
-      const msg =
-        secondError instanceof Error
-          ? secondError.message
-          : "Unknown Gemini error";
-      throw new Error(`Gemini call failed after 2 attempts: ${msg}`);
+      return await request();
+    } catch (retryError) {
+      if (retryError instanceof GeminiError && retryError.kind === "invalid_output") {
+        throw new GeminiError("invalid_output", "Gemini returned invalid output twice.");
+      }
+      throw retryError;
     }
   }
 }
-

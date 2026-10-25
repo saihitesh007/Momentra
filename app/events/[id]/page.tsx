@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { prisma } from "@/backend/lib/db";
 import EventDashboardClient from "./EventDashboardClient";
 
@@ -6,6 +7,8 @@ interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ new?: string }>;
 }
+
+export const metadata: Metadata = { title: "Event Plan | Momentra" };
 
 export default async function EventDashboardPage({ params, searchParams }: Props) {
   const [{ id }, query] = await Promise.all([params, searchParams]);

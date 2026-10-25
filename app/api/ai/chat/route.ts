@@ -1,45 +1,48 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/lib/db";
 import { callGemini } from "@/backend/lib/gemini";
 import { buildChatPrompt } from "@/backend/lib/prompts";
 import { ChatMessageSchema, GeminiChatSchema } from "@/backend/lib/schemas";
-import { ZodError } from "zod";
+import { handleRoute } from "@/backend/lib/api";
+import { rateLimitResponse } from "@/backend/lib/rateLimit";
 
-// POST /api/ai/chat
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { eventId, message, history } = body;
+const ChatRequestSchema = z.object({
+  eventId: z.string().min(1).max(64),
+  message: ChatMessageSchema.shape.message,
+  history: ChatMessageSchema.shape.history,
+}).strict();
 
-    if (!eventId) {
-      return NextResponse.json({ error: "eventId is required" }, { status: 400 });
-    }
-
-    // Validate message + history
-    const parsed = ChatMessageSchema.parse({ message, history });
-
+/** Responds to chat with event context and validated, approval-only suggested actions. */
+export async function POST(req: Request): Promise<Response> {
+  const limited = rateLimitResponse(req, "ai-chat");
+  if (limited) return limited;
+  return handleRoute(async () => {
+    const parsed = ChatRequestSchema.parse(await req.json());
+    const { eventId } = parsed;
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
-
-    // Get context: last 10 messages from history
-    const recentHistory = parsed.history.slice(-10);
-
-    const budgetItems = await prisma.budgetItem.findMany({ where: { eventId } });
-    const tasks = await prisma.timelineTask.findMany({ where: { eventId } });
-    const vendors = await prisma.vendorItem.findMany({ where: { eventId } });
-
-    const prompt = buildChatPrompt(event, budgetItems, tasks, vendors, recentHistory, parsed.message);
-    const result = await callGemini(prompt, GeminiChatSchema);
-
-    return NextResponse.json(result);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    if (msg.includes("429")) return NextResponse.json({ error: "Rate limited" }, { status: 429 });
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+    const [budgetItems, tasks, vendors] = await Promise.all([
+      prisma.budgetItem.findMany({
+        where: { eventId },
+        take: 20,
+        orderBy: { createdAt: "desc" },
+        select: { label: true, estimated: true, actual: true },
+      }),
+      prisma.timelineTask.findMany({
+        where: { eventId, status: { not: "DONE" } },
+        take: 10,
+        orderBy: { dueDate: "asc" },
+        select: { status: true, title: true, dueDate: true },
+      }),
+      prisma.vendorItem.findMany({
+        where: { eventId },
+        take: 20,
+        orderBy: { createdAt: "desc" },
+        select: { category: true, name: true, status: true },
+      }),
+    ]);
+    const prompt = buildChatPrompt(event, budgetItems, tasks, vendors, parsed.history.slice(-10), parsed.message);
+    return NextResponse.json(await callGemini(prompt, GeminiChatSchema));
+  });
 }
-
-

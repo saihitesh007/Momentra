@@ -3,5 +3,5 @@ import { globalIgnores } from "eslint/config";
 
 export default tseslint.config(
   ...tseslint.configs.recommended,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  globalIgnores([".next/**", "out/**", "build/**", "coverage/**", "playwright-report/**", "test-results/**", "next-env.d.ts"]),
 );

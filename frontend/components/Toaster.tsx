@@ -43,12 +43,13 @@ export default function Toaster() {
 
   return (
     <div
-      aria-live="polite"
       className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 no-print"
     >
       {toasts.map((t) => (
         <div
           key={t.id}
+          role={t.type === "error" ? "alert" : "status"}
+          aria-live={t.type === "error" ? "assertive" : "polite"}
           className={`animate-slide-up flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg text-sm max-w-xs ${COLORS[t.type]}`}
         >
           <span className="flex-1">{t.message}</span>

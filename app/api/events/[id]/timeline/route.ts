@@ -1,53 +1,38 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/lib/db";
-import { ZodError, z } from "zod";
+import { handleRoute } from "@/backend/lib/api";
 
 type Params = { params: Promise<{ id: string }> };
-
 const CreateTaskSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
-  dueDate: z.string().refine((d) => !isNaN(Date.parse(d)), "Invalid date"),
-  phase: z.string().min(1),
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(1000).optional(),
+  dueDate: z.string().datetime({ offset: true }).or(z.string().date()),
+  phase: z.string().trim().min(1).max(80),
   status: z.enum(["TODO", "DOING", "DONE"]).default("TODO"),
-});
+}).strict();
 
-// GET /api/events/[id]/timeline
-export async function GET(_req: Request, { params }: Params) {
-  const routeParams = await params;
-  const tasks = await prisma.timelineTask.findMany({
-    where: { eventId: routeParams.id },
-    orderBy: { dueDate: "asc" },
+/** Lists timeline tasks for an event. */
+export async function GET(_req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id } = await params;
+    const tasks = await prisma.timelineTask.findMany({ where: { eventId: id }, orderBy: { dueDate: "asc" } });
+    return NextResponse.json(tasks);
   });
-  return NextResponse.json(tasks);
 }
 
-// POST /api/events/[id]/timeline — add a manual task
-export async function POST(req: Request, { params }: Params) {
-  const routeParams = await params;
-  try {
-    const body = await req.json();
-    const data = CreateTaskSchema.parse(body);
-
+/** Adds a user-created timeline task after checking its event and date. */
+export async function POST(req: Request, { params }: Params): Promise<Response> {
+  return handleRoute(async () => {
+    const { id } = await params;
+    const data = CreateTaskSchema.parse(await req.json());
+    const event = await prisma.event.findUnique({ where: { id }, select: { id: true, date: true } });
+    if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    const dueDate = new Date(data.dueDate);
+    if (dueDate > event.date) return NextResponse.json({ error: "Task date must be on or before the event date" }, { status: 400 });
     const task = await prisma.timelineTask.create({
-      data: {
-        eventId: routeParams.id,
-        title: data.title,
-        description: data.description,
-        dueDate: new Date(data.dueDate),
-        phase: data.phase,
-        status: data.status,
-        aiGenerated: false,
-      },
+      data: { eventId: id, title: data.title, description: data.description, dueDate, phase: data.phase, status: data.status, aiGenerated: false },
     });
     return NextResponse.json(task, { status: 201 });
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.issues }, { status: 400 });
-    }
-    return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
-  }
+  });
 }
-
-
-
